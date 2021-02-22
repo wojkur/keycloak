@@ -28,5 +28,10 @@ import org.keycloak.models.RealmModel;
  */
 public interface CredentialAuthentication {
     boolean supportsCredentialAuthenticationFor(String type);
+
     CredentialValidationOutput authenticate(RealmModel realm, CredentialInput input);
+
+    default CredentialValidationOutput authenticate(RealmModel realm, CredentialInput input, CredentialValidationOutput previousOutput) {
+        return authenticate(realm, input);
+    }
 }

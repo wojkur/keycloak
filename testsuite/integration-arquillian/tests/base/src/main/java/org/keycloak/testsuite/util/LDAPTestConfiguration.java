@@ -63,6 +63,7 @@ public class LDAPTestConfiguration {
         PROP_MAPPINGS.put(LDAPConstants.RDN_LDAP_ATTRIBUTE, "idm.test.ldap.rdn.ldap.attribute");
         PROP_MAPPINGS.put(LDAPConstants.USER_OBJECT_CLASSES, "idm.test.ldap.user.object.classes");
         PROP_MAPPINGS.put(LDAPConstants.EDIT_MODE, "idm.test.ldap.edit.mode");
+        PROP_MAPPINGS.put("priority", "idm.test.ldap.priority");
 
         PROP_MAPPINGS.put(KerberosConstants.ALLOW_KERBEROS_AUTHENTICATION, "idm.test.kerberos.allow.kerberos.authentication");
         PROP_MAPPINGS.put(KerberosConstants.KERBEROS_REALM, "idm.test.kerberos.realm");
@@ -86,6 +87,7 @@ public class LDAPTestConfiguration {
         DEFAULT_VALUES.put(LDAPConstants.USERNAME_LDAP_ATTRIBUTE, null);
         DEFAULT_VALUES.put(LDAPConstants.USER_OBJECT_CLASSES, null);
         DEFAULT_VALUES.put(LDAPConstants.EDIT_MODE, UserStorageProvider.EditMode.READ_ONLY.toString());
+        DEFAULT_VALUES.put("priority", "100");
         DEFAULT_VALUES.put(LDAPConstants.USE_TRUSTSTORE_SPI, LDAPConstants.USE_TRUSTSTORE_ALWAYS);
 
         DEFAULT_VALUES.put(KerberosConstants.ALLOW_KERBEROS_AUTHENTICATION, "false");

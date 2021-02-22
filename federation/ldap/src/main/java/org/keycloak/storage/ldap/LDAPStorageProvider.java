@@ -17,12 +17,7 @@
 
 package org.keycloak.storage.ldap;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -702,48 +697,84 @@ public class LDAPStorageProvider implements UserStorageProvider,
     }
 
     @Override
-    public CredentialValidationOutput authenticate(RealmModel realm, CredentialInput cred) {
-        if (!(cred instanceof UserCredentialModel)) CredentialValidationOutput.failed();
-        UserCredentialModel credential = (UserCredentialModel)cred;
-        if (credential.getType().equals(UserCredentialModel.KERBEROS)) {
-            if (kerberosConfig.isAllowKerberosAuthentication()) {
-                String spnegoToken = credential.getChallengeResponse();
-                SPNEGOAuthenticator spnegoAuthenticator = factory.createSPNEGOAuthenticator(spnegoToken, kerberosConfig);
+    public CredentialValidationOutput authenticate(RealmModel realm, CredentialInput input) {
+        return authenticate(realm, input, null);
+    }
 
-                spnegoAuthenticator.authenticate();
+    @Override
+    public CredentialValidationOutput authenticate(RealmModel realm, CredentialInput cred, CredentialValidationOutput previousOutput) {
+        return Optional.ofNullable(cred)
+                .filter(c -> c instanceof UserCredentialModel)
+                .map(c -> (UserCredentialModel) c)
+                .filter(c -> UserCredentialModel.KERBEROS.equals(c.getType()))
+                .filter(c -> kerberosConfig.isAllowKerberosAuthentication())
+                .map(c -> resolvePartiallyAuthenticatedUser(realm, previousOutput, kerberosConfig)
+                        .orElseGet(() -> kerberosAuthenticate(realm, c)))
+                .orElseGet(() -> CredentialValidationOutput.failed());
+    }
 
-                Map<String, String> state = new HashMap<String, String>();
-                if (spnegoAuthenticator.isAuthenticated()) {
+    protected Optional<CredentialValidationOutput> resolvePartiallyAuthenticatedUser(RealmModel realm, CredentialValidationOutput previousOutput, LDAPProviderKerberosConfig kerberosConfig) {
+        return Optional.ofNullable(previousOutput)
+                .flatMap(o -> Optional.ofNullable(o.getState()))
+                .flatMap(state -> Optional.ofNullable(state.get(getPartiallyAuthenticatedUserStateKey(kerberosConfig))))
+                .map(username -> Optional.ofNullable(findOrCreateAuthenticatedUser(realm, username))
+                        .map(user -> new CredentialValidationOutput(user, CredentialValidationOutput.Status.AUTHENTICATED, new HashMap<>()))
+                        .orElseGet(() -> new CredentialValidationOutput(null, CredentialValidationOutput.Status.PARTIAL, new HashMap<>(previousOutput.getState())))
+                );
+    }
 
-                    // TODO: This assumes that LDAP "uid" is equal to kerberos principal name. Like uid "hnelson" and kerberos principal "hnelson@KEYCLOAK.ORG".
-                    // Check if it's correct or if LDAP attribute for mapping kerberos principal should be available (For ApacheDS it seems to be attribute "krb5PrincipalName" but on MSAD it's likely different)
-                    String username = spnegoAuthenticator.getAuthenticatedUsername();
-                    UserModel user = findOrCreateAuthenticatedUser(realm, username);
+    protected CredentialValidationOutput kerberosAuthenticate(RealmModel realm, UserCredentialModel credential) {
+        String spnegoToken = credential.getChallengeResponse();
+        SPNEGOAuthenticator spnegoAuthenticator = factory.createSPNEGOAuthenticator(spnegoToken, kerberosConfig);
+        spnegoAuthenticator.authenticate();
 
-                    if (user == null) {
-                        logger.warnf("Kerberos/SPNEGO authentication succeeded with username [%s], but couldn't find or create user with federation provider [%s]", username, model.getName());
-                        return CredentialValidationOutput.failed();
-                    } else {
-                        String delegationCredential = spnegoAuthenticator.getSerializedDelegationCredential();
-                        if (delegationCredential != null) {
-                            state.put(KerberosConstants.GSS_DELEGATION_CREDENTIAL, delegationCredential);
-                        }
-
-                        return new CredentialValidationOutput(user, CredentialValidationOutput.Status.AUTHENTICATED, state);
-                    }
-                }  else if (spnegoAuthenticator.getResponseToken() != null) {
-                    // Case when SPNEGO handshake requires multiple steps
-                    logger.tracef("SPNEGO Handshake will continue");
-                    state.put(KerberosConstants.RESPONSE_TOKEN, spnegoAuthenticator.getResponseToken());
-                    return new CredentialValidationOutput(null, CredentialValidationOutput.Status.CONTINUE, state);
-                } else {
-                    logger.tracef("SPNEGO Handshake not successful");
-                    return CredentialValidationOutput.failed();
-                }
-            }
+        Map<String, String> state = new HashMap<String, String>();
+        if (spnegoAuthenticator.isAuthenticated()) {
+            // TODO: This assumes that LDAP "uid" is equal to kerberos principal name. Like uid "hnelson" and kerberos principal "hnelson@KEYCLOAK.ORG".
+            // Check if it's correct or if LDAP attribute for mapping kerberos principal should be available (For ApacheDS it seems to be attribute "krb5PrincipalName" but on MSAD it's likely different)
+            String username = spnegoAuthenticator.getAuthenticatedUsername();
+            Optional.ofNullable(spnegoAuthenticator.getSerializedDelegationCredential())
+                    .ifPresent(dc -> state.put(KerberosConstants.GSS_DELEGATION_CREDENTIAL, dc));
+            return Optional.ofNullable(findOrCreateAuthenticatedUser(realm, username))
+                    .map(user -> new CredentialValidationOutput(user, CredentialValidationOutput.Status.AUTHENTICATED, state))
+                    .orElseGet(() -> {
+                        logger.debugf("Kerberos/SPNEGO authentication succeeded with username [%s], but couldn't find or create user with federation provider [%s]", username, model.getName());
+                        logger.infof("tmp state key: " + getPartiallyAuthenticatedUserStateKey(kerberosConfig));
+                        state.put(getPartiallyAuthenticatedUserStateKey(kerberosConfig), username);
+                        return new CredentialValidationOutput(null, CredentialValidationOutput.Status.PARTIAL, state);
+                    });
+        } else if (spnegoAuthenticator.getResponseToken() != null) {
+            // Case when SPNEGO handshake requires multiple steps
+            logger.tracef("SPNEGO Handshake will continue");
+            state.put(KerberosConstants.RESPONSE_TOKEN, spnegoAuthenticator.getResponseToken());
+            return new CredentialValidationOutput(null, CredentialValidationOutput.Status.CONTINUE, state);
+        } else {
+            logger.tracef("SPNEGO Handshake not successful");
+            return CredentialValidationOutput.failed();
         }
+    }
 
-        return CredentialValidationOutput.failed();
+    protected static final String PARTIALLY_AUTHENTICATED_USER_PREFIX = "partially-auth-user";
+
+    protected static final String PARTIALLY_AUTHENTICATED_USER_TYPE_KERBEROS = "kerberos";
+
+    protected static final String PARTIALLY_AUTHENTICATED_USER_KEY_SEPARATOR = "::";
+
+    /**
+     * Calculates key to hold state of authenticated user (as token is not reusable).
+     * The key is composed of configured server principal and keytab, to ensure that only federations with same
+     * kerberos configuration may reuse pre-authenticated state.
+     *
+     * @param kerberosConfig - kerberos configuration
+     * @return - calculated key
+     */
+    protected static String getPartiallyAuthenticatedUserStateKey(LDAPProviderKerberosConfig kerberosConfig) {
+        return new StringBuilder()
+                .append(PARTIALLY_AUTHENTICATED_USER_PREFIX).append(PARTIALLY_AUTHENTICATED_USER_KEY_SEPARATOR)
+                .append(PARTIALLY_AUTHENTICATED_USER_TYPE_KERBEROS).append(PARTIALLY_AUTHENTICATED_USER_KEY_SEPARATOR)
+                .append(kerberosConfig.getServerPrincipal().trim()).append(PARTIALLY_AUTHENTICATED_USER_KEY_SEPARATOR)
+                .append(kerberosConfig.getKeyTab().trim())
+                .toString();
     }
 
     @Override
