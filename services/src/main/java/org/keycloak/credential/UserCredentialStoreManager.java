@@ -35,6 +35,8 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
@@ -275,10 +277,13 @@ public class UserCredentialStoreManager extends AbstractStorageManager<UserStora
         credentialAuthenticationStream = Stream.concat(credentialAuthenticationStream,
                 getCredentialProviders(session, CredentialAuthentication.class));
 
+        AtomicReference<CredentialValidationOutput> previousOutput = new AtomicReference<>();
         return credentialAuthenticationStream
                 .filter(credentialAuthentication -> credentialAuthentication.supportsCredentialAuthenticationFor(input.getType()))
-                .map(credentialAuthentication -> credentialAuthentication.authenticate(realm, input))
+                .map(credentialAuthentication -> previousOutput.updateAndGet((previous) -> credentialAuthentication.authenticate(realm, input, previous)))
+                .filter(output -> output != null && !CredentialValidationOutput.Status.PARTIAL.equals(output.getAuthStatus()))
                 .findFirst().orElse(null);
+
     }
 
     @Override

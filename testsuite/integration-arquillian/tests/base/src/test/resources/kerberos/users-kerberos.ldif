@@ -9,6 +9,11 @@ objectClass: organizationalUnit
 objectClass: top
 ou: People
 
+dn: ou=Empty,dc=keycloak,dc=org
+objectClass: organizationalUnit
+objectClass: top
+ou: Empty
+
 dn: uid=krbtgt,ou=People,dc=keycloak,dc=org
 objectClass: top
 objectClass: person

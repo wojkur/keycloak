@@ -21,11 +21,9 @@ import static org.keycloak.testsuite.admin.AbstractAdminTest.loadJson;
 
 import java.net.URI;
 import java.security.Principal;
-import java.util.Hashtable;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import javax.naming.Context;
 import javax.naming.NamingException;
@@ -137,6 +135,9 @@ public abstract class AbstractKerberosTest extends AbstractAuthTest {
         return adminClient.realm("test");
     }
 
+    protected List<? extends ComponentRepresentation> getAdditionalComponents() {
+        return Collections.emptyList();
+    }
 
     @Before
     @Override
@@ -154,10 +155,15 @@ public abstract class AbstractKerberosTest extends AbstractAuthTest {
 
         oauth.clientId("kerberos-app");
 
-        ComponentRepresentation rep = getUserStorageConfiguration();
-        Response resp = testRealmResource().components().add(rep);
-        getCleanup().addComponentId(ApiUtil.getCreatedId(resp));
-        resp.close();
+        Stream.concat(
+                Stream.of(getUserStorageConfiguration()),
+                getAdditionalComponents().stream()
+        ).forEach(rep -> {
+            Response resp = testRealmResource().components().add(rep);
+            getCleanup().addComponentId(ApiUtil.getCreatedId(resp));
+            resp.close();
+        });
+
     }
 
     @After

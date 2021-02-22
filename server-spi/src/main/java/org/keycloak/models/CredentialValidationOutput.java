@@ -63,6 +63,6 @@ public class CredentialValidationOutput {
     }
 
     public enum Status {
-        AUTHENTICATED, FAILED, CONTINUE
+        AUTHENTICATED, FAILED, CONTINUE, PARTIAL
     }
 }
