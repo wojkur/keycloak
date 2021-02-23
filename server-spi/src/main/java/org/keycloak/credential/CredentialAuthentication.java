@@ -19,6 +19,8 @@ package org.keycloak.credential;
 import org.keycloak.models.CredentialValidationOutput;
 import org.keycloak.models.RealmModel;
 
+import java.util.Map;
+
 /**
  * Single purpose method that knows how to authenticate a user based on a credential type.  This is used when the user
  * is not known but the provider knows how to extract this information from the credential.  Examples are Kerberos.
@@ -31,7 +33,7 @@ public interface CredentialAuthentication {
 
     CredentialValidationOutput authenticate(RealmModel realm, CredentialInput input);
 
-    default CredentialValidationOutput authenticate(RealmModel realm, CredentialInput input, CredentialValidationOutput previousOutput) {
+    default CredentialValidationOutput authenticate(RealmModel realm, CredentialInput input, Map<String, String> authenticationState) {
         return authenticate(realm, input);
     }
 }

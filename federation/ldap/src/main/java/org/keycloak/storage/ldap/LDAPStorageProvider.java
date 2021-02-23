@@ -698,29 +698,26 @@ public class LDAPStorageProvider implements UserStorageProvider,
 
     @Override
     public CredentialValidationOutput authenticate(RealmModel realm, CredentialInput input) {
-        return authenticate(realm, input, null);
+        return authenticate(realm, input, Collections.emptyMap());
     }
 
     @Override
-    public CredentialValidationOutput authenticate(RealmModel realm, CredentialInput cred, CredentialValidationOutput previousOutput) {
+    public CredentialValidationOutput authenticate(RealmModel realm, CredentialInput cred, Map<String, String> authenticationState) {
         return Optional.ofNullable(cred)
                 .filter(c -> c instanceof UserCredentialModel)
                 .map(c -> (UserCredentialModel) c)
                 .filter(c -> UserCredentialModel.KERBEROS.equals(c.getType()))
                 .filter(c -> kerberosConfig.isAllowKerberosAuthentication())
-                .map(c -> resolvePartiallyAuthenticatedUser(realm, previousOutput, kerberosConfig)
-                        .orElseGet(() -> kerberosAuthenticate(realm, c)))
+                .map(c -> resolvePartiallyAuthenticatedUser(realm, authenticationState, kerberosConfig)
+                          .orElseGet(() -> kerberosAuthenticate(realm, c)))
                 .orElseGet(() -> CredentialValidationOutput.failed());
     }
 
-    protected Optional<CredentialValidationOutput> resolvePartiallyAuthenticatedUser(RealmModel realm, CredentialValidationOutput previousOutput, LDAPProviderKerberosConfig kerberosConfig) {
-        return Optional.ofNullable(previousOutput)
-                .flatMap(o -> Optional.ofNullable(o.getState()))
+    protected Optional<CredentialValidationOutput> resolvePartiallyAuthenticatedUser(RealmModel realm, Map<String, String> authenticationState, LDAPProviderKerberosConfig kerberosConfig) {
+        return Optional.ofNullable(authenticationState)
                 .flatMap(state -> Optional.ofNullable(state.get(getPartiallyAuthenticatedUserStateKey(kerberosConfig))))
-                .map(username -> Optional.ofNullable(findOrCreateAuthenticatedUser(realm, username))
-                        .map(user -> new CredentialValidationOutput(user, CredentialValidationOutput.Status.AUTHENTICATED, new HashMap<>()))
-                        .orElseGet(() -> new CredentialValidationOutput(null, CredentialValidationOutput.Status.PARTIAL, new HashMap<>(previousOutput.getState())))
-                );
+                .flatMap(username -> Optional.ofNullable(findOrCreateAuthenticatedUser(realm, username)))
+                .map(user -> new CredentialValidationOutput(user, CredentialValidationOutput.Status.AUTHENTICATED, Collections.emptyMap()));
     }
 
     protected CredentialValidationOutput kerberosAuthenticate(RealmModel realm, UserCredentialModel credential) {

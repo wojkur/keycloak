@@ -31,10 +31,7 @@ import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.UserStorageProviderFactory;
 import org.keycloak.storage.UserStorageProviderModel;
 
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -277,13 +274,18 @@ public class UserCredentialStoreManager extends AbstractStorageManager<UserStora
         credentialAuthenticationStream = Stream.concat(credentialAuthenticationStream,
                 getCredentialProviders(session, CredentialAuthentication.class));
 
-        AtomicReference<CredentialValidationOutput> previousOutput = new AtomicReference<>();
+        Map<String, String> authenticationState = new HashMap<>();
         return credentialAuthenticationStream
                 .filter(credentialAuthentication -> credentialAuthentication.supportsCredentialAuthenticationFor(input.getType()))
-                .map(credentialAuthentication -> previousOutput.updateAndGet((previous) -> credentialAuthentication.authenticate(realm, input, previous)))
+                .map(credentialAuthentication -> {
+                    CredentialValidationOutput output = credentialAuthentication.authenticate(realm, input, authenticationState);
+                    if(output != null) {
+                        authenticationState.putAll(output.getState());
+                    }
+                    return output;
+                })
                 .filter(output -> output != null && !CredentialValidationOutput.Status.PARTIAL.equals(output.getAuthStatus()))
                 .findFirst().orElse(null);
-
     }
 
     @Override
