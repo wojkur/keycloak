@@ -728,7 +728,7 @@ public class LDAPStorageProvider implements UserStorageProvider,
         SPNEGOAuthenticator spnegoAuthenticator = factory.createSPNEGOAuthenticator(spnegoToken, kerberosConfig);
         spnegoAuthenticator.authenticate();
 
-        Map<String, String> state = new HashMap<String, String>();
+        Map<String, String> state = new HashMap<>();
         if (spnegoAuthenticator.isAuthenticated()) {
             // TODO: This assumes that LDAP "uid" is equal to kerberos principal name. Like uid "hnelson" and kerberos principal "hnelson@KEYCLOAK.ORG".
             // Check if it's correct or if LDAP attribute for mapping kerberos principal should be available (For ApacheDS it seems to be attribute "krb5PrincipalName" but on MSAD it's likely different)
@@ -739,7 +739,6 @@ public class LDAPStorageProvider implements UserStorageProvider,
                     .map(user -> new CredentialValidationOutput(user, CredentialValidationOutput.Status.AUTHENTICATED, state))
                     .orElseGet(() -> {
                         logger.debugf("Kerberos/SPNEGO authentication succeeded with username [%s], but couldn't find or create user with federation provider [%s]", username, model.getName());
-                        logger.infof("tmp state key: " + getPartiallyAuthenticatedUserStateKey(kerberosConfig));
                         state.put(getPartiallyAuthenticatedUserStateKey(kerberosConfig), username);
                         return new CredentialValidationOutput(null, CredentialValidationOutput.Status.PARTIAL, state);
                     });
